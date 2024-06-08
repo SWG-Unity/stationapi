@@ -1,39 +1,35 @@
-
 #include "GatewayNode.hpp"
+#include "easylogging++.h"
 
-#include "ChatAvatarService.hpp"
-#include "ChatRoomService.hpp"
-#include "PersistentMessageService.hpp"
-#include "StationChatConfig.hpp"
+GatewayNode::GatewayNode()
+    : avatarService_(std::make_unique<ChatAvatarService>())
+    , roomService_(std::make_unique<ChatRoomService>())
+    , messageService_(std::make_unique<PersistentMessageService>())
+    , udpLibrary_(std::make_unique<UdpLibrary>()) {
+    connection_ = udpLibrary_->CreateConnection();
+    InitializeServices();
+}
 
-#include <sqlite3.h>
+GatewayNode::~GatewayNode() {
+    // Resources are automatically cleaned up by unique_ptr
+}
 
-GatewayNode::GatewayNode(StationChatConfig& config)
-    : Node(this, config.gatewayAddress, config.gatewayPort, config.bindToIp)
-    , config_{config} {
-    if (sqlite3_open(config.chatDatabasePath.c_str(), &db_) != SQLITE_OK) {
-        throw std::runtime_error("Can't open database: " + std::string{sqlite3_errmsg(db_)});
+void GatewayNode::InitializeServices() {
+    // Initialize your services here
+    avatarService_->Initialize();
+    roomService_->Initialize();
+    messageService_->Initialize();
+}
+
+void GatewayNode::CreateClient(const std::u16string& address) {
+    if (clients_.find(address) == clients_.end()) {
+        clients_[address] = std::make_unique<GatewayClient>(connection_.get(), this);
     }
-
-    avatarService_ = std::make_unique<ChatAvatarService>(db_);
-    roomService_ = std::make_unique<ChatRoomService>(avatarService_.get(), db_);
-    messageService_ = std::make_unique<PersistentMessageService>(db_);
 }
 
-GatewayNode::~GatewayNode() { sqlite3_close(db_); }
-
-ChatAvatarService* GatewayNode::GetAvatarService() { return avatarService_.get(); }
-
-ChatRoomService* GatewayNode::GetRoomService() { return roomService_.get(); }
-
-PersistentMessageService* GatewayNode::GetMessageService() {
-    return messageService_.get();
+void GatewayNode::SendTo(const std::u16string& address, const Message& message) {
+    if (clients_.find(address) == clients_.end()) {
+        CreateClient(address);
+    }
+    clients_[address]->Send(message);
 }
-
-StationChatConfig& GatewayNode::GetConfig() { return config_; }
-
-void GatewayNode::RegisterClientAddress(const std::u16string & address, GatewayClient * client) {
-    clientAddressMap_[address] = client;
-}
-
-void GatewayNode::OnTick() {}

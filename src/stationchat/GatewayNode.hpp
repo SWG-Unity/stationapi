@@ -1,45 +1,35 @@
-
 #pragma once
 
-#include "Node.hpp"
+#include "ChatAvatarService.hpp"
+#include "ChatRoomService.hpp"
+#include "PersistentMessageService.hpp"
+#include "UdpLibrary.hpp"
 #include "GatewayClient.hpp"
+#include "Message.hpp"
 
-#include <map>
+#include <unordered_map>
+#include <string>
 #include <memory>
 
-class ChatAvatarService;
-class ChatRoomService;
-class PersistentMessageService;
-struct StationChatConfig;
-struct sqlite3;
-
-class GatewayNode : public Node<GatewayNode, GatewayClient> {
+class GatewayNode {
 public:
-    explicit GatewayNode(StationChatConfig& config);
+    GatewayNode();
     ~GatewayNode();
 
-    ChatAvatarService* GetAvatarService();
-    ChatRoomService* GetRoomService();
-    PersistentMessageService* GetMessageService();
-    StationChatConfig& GetConfig();
+    ChatAvatarService* GetAvatarService() const { return avatarService_.get(); }
+    ChatRoomService* GetRoomService() const { return roomService_.get(); }
+    PersistentMessageService* GetMessageService() const { return messageService_.get(); }
 
-    void RegisterClientAddress(const std::u16string& address, GatewayClient* client);
-
-    template<typename MessageT>
-    void SendTo(const std::u16string& address, const MessageT& message) {
-        auto find_iter = clientAddressMap_.find(address);
-        if (find_iter != std::end(clientAddressMap_)) {
-            find_iter->second->Send(message);
-        }
-    }
+    void SendTo(const std::u16string& address, const Message& message);
 
 private:
-    void OnTick() override;
-
     std::unique_ptr<ChatAvatarService> avatarService_;
     std::unique_ptr<ChatRoomService> roomService_;
     std::unique_ptr<PersistentMessageService> messageService_;
-    std::map<std::u16string, GatewayClient*> clientAddressMap_;
-    StationChatConfig& config_;
-    sqlite3* db_;
+    std::unordered_map<std::u16string, std::unique_ptr<GatewayClient>> clients_;
+    std::unique_ptr<UdpConnection> connection_;
+    std::unique_ptr<UdpLibrary> udpLibrary_;
+
+    void InitializeServices();
+    void CreateClient(const std::u16string& address);
 };
